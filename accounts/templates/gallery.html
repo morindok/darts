@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="fa">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Arts Gallery</title>
+    <style>
+        body {
+            font-family: 'Tahoma', sans-serif;
+            background-color: #f4f4f4;
+            margin-top: 200px;
+            padding: 0;
+            display: block;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            height: 100vh;
+        }
+
+        nav {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            background-color: cadetblue;
+            padding: 15px;
+            text-align: center;
+            z-index: 1000;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            margin-bottom: 300px;
+        }
+
+        nav p {
+            margin-bottom: 5px;
+            color: #fff;
+        }
+
+        nav a {
+            display: inline-block;
+            color: white;
+            text-decoration: none;
+            padding: 10px 15px;
+            margin: 0 5px;
+            border-radius: 5px;
+            transition: background-color 0.3s ease;
+            background-color: #4CAF50;
+        }
+
+        nav a:hover {
+            background-color: darkgreen;
+        }
+
+        form {
+            display: flex;
+            margin-top: 10px;
+        }
+
+        form input {
+            flex: 1;
+            padding: 10px;
+            border-radius: 4px 0 0 4px;
+            border: 1px solid #ccc;
+        }
+
+        form button {
+            padding: 10px;
+            border-radius: 4px;
+            background-color: #4CAF50;
+            color: white;
+            cursor: pointer;
+            align-self: center;
+        }
+
+        form input,
+        form button {
+            border: none;
+            outline: none;
+        }
+
+        form input:focus {
+            border-color: #4CAF50;
+        }
+
+        .gallery {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            gap: 20px;
+            padding: 20px;
+            box-sizing: border-box;
+            margin-top: 100px;
+        }
+
+        .artwork {
+            max-width: 100%;
+            text-align: center;
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            margin-top: 10px;
+            object-fit: cover;
+        }
+
+        .artwork h3 {
+            margin-bottom: 8px;
+            color: #007BFF;
+            text-overflow: ellipsis;
+            overflow: hidden;
+        }
+
+        .artwork form {
+            display: flex;
+            justify-content: center;
+            margin-top: 10px;
+        }
+
+        .artwork p {
+            margin-bottom: 16px;
+            color: #555;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .artwork img {
+            max-width: 100%;
+            height: auto;
+            border-radius: 8px;
+            margin-top: 10px;
+        }
+
+        .pagination {
+            display: flex;
+            justify-content: center;
+            margin-top: 20px;
+        }
+
+        .pagination a {
+            color: #4CAF50;
+            padding: 8px 16px;
+            text-decoration: none;
+            transition: background-color 0.3s ease;
+            border: 1px solid #4CAF50;
+            margin: 0 5px;
+            border-radius: 4px;
+        }
+
+        .pagination a:hover {
+            background-color: #4CAF50;
+            color: white;
+        }
+
+        .pagination .active {
+            background-color: #4CAF50;
+            color: white;
+        }
+
+        .gallery:after {
+            content: "";
+            display: table;
+            clear: both;
+        }
+
+
+        .artwork a.donation-button,
+        .artwork a.delete-button,
+        .artwork a.comment-button,
+        .artwork a.make-offer-button {
+            display: block;
+            width: 100%;
+            margin-bottom: 10px;
+            padding: 10px 0;
+            border-radius: 5px;
+            transition: background-color 0.3s ease;
+            text-align: center;
+            text-decoration: none;
+        }
+
+        .artwork a.donation-button {
+            background-color: #007BFF;
+            color: white;
+        }
+
+        .artwork a.donation-button:hover {
+            background-color: #0056b3;
+        }
+
+        .artwork a.delete-button {
+            background-color: #FF4D4D;
+            color: white;
+        }
+
+        .artwork a.delete-button:hover {
+            background-color: #b30000;
+        }
+
+        .artwork a.comment-button {
+            background-color: #196b09;
+            color: white;
+        }
+
+        .artwork a.comment-button:hover {
+            background-color: #43ec22;
+        }
+
+        .artwork a.make-offer-button {
+            background-color: #FFD700;
+            color: white;
+        }
+
+        .artwork a.make-offer-button:hover {
+            background-color: #FFC400;
+        }
+
+        .like-btn {
+            display: block;
+            width: 100%;
+            margin-bottom: 10px;
+            padding: 10px 0;
+            border-radius: 5px;
+            transition: background-color 0.3s ease;
+            text-align: center;
+            text-decoration: none;
+            background-color: #d00b0b;
+            color: white;
+            border: none;
+            cursor: pointer;
+            outline: none;
+        }
+
+        .like-btn:hover {
+            background-color: #ff1414;
+        }
+
+        @media only screen and (max-width: 600px) {
+            body {
+                margin-top: 150px;
+            }
+
+            nav {
+                padding: 10px;
+            }
+
+            .gallery {
+                padding: 10px;
+                margin-top: 80px;
+            }
+
+            .artwork {
+                padding: 10px;
+            }
+
+            .pagination a {
+                padding: 8px 12px;
+                font-size: 14px;
+            }
+        }
+
+    </style>
+</head>
+<body>
+
+<nav>
+    <p>Sell your digital art in Darts platform</p>
+    <p>Total Artists: {{ total_users }}</p>
+    {% if user.is_authenticated %}
+        <a href="{% url 'dashboard' %}">Your dashboard</a>
+    {% else %}
+        <a href="{% url 'login' %}">Login</a>
+        <a href="{% url 'signup' %}">Join us</a>
+    {% endif %}
+
+    <form method="GET" action="{% url 'gallery' %}">
+        <input type="text" name="search" placeholder="Enter name of the art...">
+        <button type="submit">Search</button>
+    </form>
+</nav>
+<div class="gallery">
+    {% if search_query %}
+        <p>Your search: <strong>{{ search_query }}</strong></p>
+    {% endif %}
+    {% for artwork in artworks %}
+        <div class="artwork">
+            <h3>{{ artwork.title }}</h3>
+            <p>{{ artwork.description }}</p>
+            <p>Owner Price: {{ artwork.price }} USDT</p>
+            <p>Auction Price:
+                {% if artwork.current_bid_amount %}{{ artwork.current_bid_amount }} USDT{% else %}0 USDT{% endif %}</p>
+            <p>Created by:</p>
+            <a href="{% url 'user_gallery' username=artwork.uploaded_by.username %}">
+                {{ artwork.uploaded_by.username }}
+            </a><br>
+
+            <img src="{{ artwork.image.url }}" alt="{{ artwork.title }}">
+
+            <a href="{% url 'purchase' artwork_id=artwork.id %}" class="donation-button">Donation</a>
+
+
+            {% if user.is_authenticated and user.is_staff %}
+                <a href="{% url 'delete_artwork' artwork_id=artwork.id %}" class="delete-button">Delete Art</a>
+            {% endif %}
+            <a href="{% url 'participate_auction' artwork_id=artwork.id %}" class="make-offer-button">Make Offer</a>
+            <a href="{% url 'add_comment' artwork_id=artwork.id %}" class="comment-button">Add Comment</a>
+
+            <form method="post" action="{%       url 'like_artwork' artwork_id=artwork.id %}">
+                {% csrf_token %}
+                <button type="submit" class="like-btn">Like it</button>
+            </form>
+            <span class="like-count">{{ artwork.likes }}</span>
+            </span>
+
+
+        </div>
+    {% endfor %}
+</div>
+<div class="pagination">
+
+    {% if artworks.has_previous %}
+        <a href="?page=1">&laquo; First</a>
+        <a href="?page={{ artworks.previous_page_number }}">Previous</a>
+    {% endif %}
+
+    {% for num in artworks.paginator.page_range %}
+        {% if artworks.number == num %}
+            <span class="active">{{ num }}</span>
+        {% else %}
+            <a href="?page={{ num }}">{{ num }}</a>
+        {% endif %}
+    {% endfor %}
+
+    {% if artworks.has_next %}
+        <a href="?page={{ artworks.next_page_number }}">Next</a>
+        <a href="?page={{ artworks.paginator.num_pages }}">Last &raquo;</a>
+    {% endif %}
+</div>
+
+<script>
+    document.addEventListener('contextmenu', event => event.preventDefault());
+</script>
+
+
+</body>
+</html>

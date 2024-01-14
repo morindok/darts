@@ -1,0 +1,2646 @@
+
+
+==================== urls.py ====================
+from django.conf import settings
+from django.urls import path
+from .views import signup, user_login, dashboard, add_artwork, gallery, logout_view, user_gallery,\
+    user_gallery_by_user, complete_profile, purchase, delete_artwork
+from django.conf.urls.static import static
+
+urlpatterns = [
+                  path('signup/', signup, name='signup'),
+                  path('login/', user_login, name='login'),
+                  path('dashboard/', dashboard, name='dashboard'),
+                  path('add_artwork/', add_artwork, name='add_artwork'),
+                  path('', gallery, name='gallery'),
+                  path('logout/', logout_view, name='logout'),
+                  path('user_gallery/<int:user_id>/', user_gallery, name='user_gallery'),
+                  path('user_gallery/<str:username>/', user_gallery_by_user, name='user_gallery'),
+                  path('complete_profile/', complete_profile, name='complete_profile'),
+                  path('purchase/<int:artwork_id>/', purchase, name='purchase'),
+                  path('delete_artwork/<int:artwork_id>/', delete_artwork, name='delete_artwork'),
+                  # مسیر‌های دیگر...
+              ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+
+==================================================
+
+
+
+==================== views.py ====================
+from django import forms
+from django.contrib.auth.decorators import login_required
+from django.contrib.auth.forms import UserCreationForm
+from django.contrib.auth.models import User
+from django.db.models import Q
+from django.urls import reverse
+
+from .models import UserProfile
+from django.contrib.auth import authenticate, login, logout
+from django.shortcuts import render, redirect, get_object_or_404
+from django.contrib import messages
+from .forms import CustomAuthenticationForm, ArtworkForm, Artwork, UserProfileForm, UserProfileUpdateForm
+
+
+def user_login(request):
+    if request.method == 'POST':
+        form = CustomAuthenticationForm(request, data=request.POST)
+        if form.is_valid():
+            username = form.cleaned_data['username']
+            password = form.cleaned_data['password']
+            user = authenticate(request, username=username, password=password)
+
+            if user is not None:
+                login(request, user)
+                return redirect('dashboard')  # هدایت به داشبورد
+            else:
+                messages.error(request, 'نام کاربری یا رمز عبور نادرست است.')
+    else:
+        form = CustomAuthenticationForm()
+
+    return render(request, 'login.html', {'form': form})
+
+
+class CustomUserCreationForm(UserCreationForm):
+    age = forms.IntegerField(required=False)
+    # دیگر فیلدها...
+    # مثلا:
+    # phone_number = forms.CharField(max_length=15, required=False)
+
+
+def signup(request):
+    if request.method == 'POST':
+        form = UserCreationForm(request.POST)
+        if form.is_valid():
+            user = form.save()
+
+            # چک کنید آیا برای این کاربر قبلاً UserProfile ایجاد شده یا نه
+            if not UserProfile.objects.filter(user=user).exists():
+                # ایجاد یک نمونه از مدل UserProfile و ارتباط آن با کاربر
+                UserProfile.objects.create(
+                    user=user,
+                    # سایر فیلدها...
+                    # مثلا:
+                    # phone_number=form.cleaned_data['phone_number'],
+                )
+
+            messages.success(request, 'ثبت نام با موفقیت انجام شد. حالا می‌توانید وارد شوید.')
+            return redirect('login')  # هدایت به صفحه لاگین
+        else:
+            errors = form.errors.get_json_data()
+            for field, field_errors in errors.items():
+                for error in field_errors:
+                    messages.error(request, f'{field}: {error["message"]}')
+    else:
+        form = CustomUserCreationForm()
+    return render(request, 'signup.html', {'form': form})
+
+
+# در فایل views.py
+@login_required(login_url='login')
+def dashboard(request):
+    user_profile = UserProfile.objects.get(user=request.user)
+    if request.user.is_authenticated:
+        username = request.user.username
+        welcome_message = f'کاربر عزیز {username} سایت خوش آمدید.'
+        messages.success(request, welcome_message)
+
+        # اضافه کردن لینک به صفحه تکمیل اطلاعات
+        complete_profile_link = reverse('complete_profile')
+    else:
+        messages.warning(request, 'شما وارد نشده‌اید.')
+        complete_profile_link = None
+
+    # بقیه کد‌های ویو...
+
+    return render(request, 'dashboard.html',
+                  {'complete_profile_link': complete_profile_link, 'user_profile': user_profile})
+
+    # views.py
+
+
+def add_artwork(request):
+    if request.method == 'POST':
+        form = ArtworkForm(request.POST, request.FILES)
+        if form.is_valid():
+            artwork = form.save(commit=False)
+            artwork.uploaded_by = request.user
+            artwork.save()
+            messages.success(request, 'اثر با موفقیت اضافه شد.')
+            return redirect('gallery')
+    else:
+        form = ArtworkForm()
+    return render(request, 'add_artwork.html', {'form': form})
+
+
+def gallery(request):
+    search_query = request.GET.get('search', '')
+    artworks = Artwork.objects.filter(Q(title__icontains=search_query))
+    return render(request, 'gallery.html', {'artworks': artworks, 'search_query': search_query})
+
+    # views.py
+
+
+def logout_view(request):
+    logout(request)
+    return redirect('login')  # به جای 'home' مسیر مورد نظر خود را قرار دهید
+
+
+def user_gallery(request, user_id):
+    user_gallery_owner = User.objects.get(pk=user_id)
+    artworks = Artwork.objects.filter(uploaded_by=user_gallery_owner)
+    return render(request, 'user_gallery.html', {'artworks': artworks})
+
+
+def user_gallery_by_user(request, username):
+    user = get_object_or_404(User, username=username)
+    artworks = Artwork.objects.filter(uploaded_by=user)
+    return render(request, 'user_gallery.html', {'artworks': artworks, 'user': user})
+
+
+def complete_profile(request):
+    # چک کردن وجود UserProfile برای کاربر
+    if not hasattr(request.user, 'userprofile'):
+        # اگر UserProfile وجود نداشته باشد، آن را ایجاد کنید
+        UserProfile.objects.create(user=request.user)
+
+    if request.method == 'POST':
+        form = UserProfileForm(request.POST, instance=request.user.userprofile)
+        if form.is_valid():
+            form.save()
+            messages.success(request, 'اطلاعات با موفقیت ذخیره شدند.')
+            return redirect('dashboard')
+    else:
+        form = UserProfileForm(instance=request.user.userprofile)
+
+    return render(request, 'complete_profile.html', {'form': form})
+
+
+def purchase(request, artwork_id):
+    artwork = get_object_or_404(Artwork, id=artwork_id)
+
+    # اطلاعات مربوط به خرید را به صفحه ارسال کنید
+    context = {
+        'artwork': artwork,
+        'user_nickname': request.user.username,
+        'user_telegram_id': request.user.userprofile.telegramID,
+        'digital_wallet_address': request.user.userprofile.digital_wallet_address,
+
+    }
+
+    return render(request, 'purchase.html', context)
+
+
+
+def delete_artwork(request, artwork_id):
+    artwork = get_object_or_404(Artwork, id=artwork_id)
+
+    # اطمینان حاصل کنید که کاربر صاحب این آثار است یا نه
+    if artwork.uploaded_by == request.user:
+        artwork.delete()
+
+    return redirect('user_gallery', user_id=request.user.id)
+
+
+==================================================
+
+
+
+==================== models.py ====================
+# در فایل models.py
+from django.db import models
+from django.contrib.auth.models import User, AbstractUser, Permission, Group
+from django.db import models
+from django.utils import timezone
+
+# models.py
+from django.db import models
+from django.contrib.auth.models import User
+from django.db.models.signals import post_save
+from django.dispatch import receiver
+
+
+class UserProfile(models.Model):
+    user = models.OneToOneField(User, on_delete=models.CASCADE)
+    is_complete = models.BooleanField(default=False)
+    phone_number = models.CharField(max_length=15, null=True, blank=True)
+    first_name = models.CharField(max_length=30, null=True, blank=True)
+    last_name = models.CharField(max_length=30, null=True, blank=True)
+    national_code = models.CharField(max_length=10, null=True, blank=True)
+    email = models.EmailField(null=True, blank=True)
+    telegramID = models.CharField(max_length=30, null=True, blank=True)
+    digital_wallet_address = models.CharField(max_length=250, null=True, blank=True)
+
+
+@receiver(post_save, sender=User)
+def create_user_profile(sender, instance, created, **kwargs):
+    if created:
+        UserProfile.objects.create(user=instance)
+
+
+@receiver(post_save, sender=User)
+def save_user_profile(sender, instance, **kwargs):
+    instance.userprofile.save()
+
+
+class Artwork(models.Model):
+    title = models.CharField(max_length=85)
+    description = models.TextField(max_length=100)
+    price = models.PositiveIntegerField(default=0, max_length=10000000)
+    image = models.ImageField(upload_to='artwork_images/')
+    uploaded_by = models.ForeignKey(User, on_delete=models.CASCADE)
+
+    def __str__(self):
+        return self.title
+
+
+def user_directory_path(instance, filename):
+    # Upload to MEDIA_ROOT/user_<id>/<filename>
+    return f'user_{instance.id}/{filename}'
+
+
+class CustomUser(AbstractUser):
+    profile_picture = models.ImageField(upload_to=user_directory_path, null=True, blank=True)
+
+    groups = models.ManyToManyField(
+        Group,
+        verbose_name=('groups'),
+        blank=True,
+        help_text=(
+            'The groups this user belongs to. A user will get all permissions '
+            'granted to each of their groups.'
+        ),
+        related_name='customuser_set',
+    )
+    user_permissions = models.ManyToManyField(
+        Permission,
+        verbose_name=('user permissions'),
+        blank=True,
+        help_text=('Specific permissions for this user.'),
+        related_name='customuser_set',
+    )
+
+==================================================
+
+
+
+==================== forms.py ====================
+from django import forms
+from django.contrib.auth.forms import AuthenticationForm
+from .models import Artwork, UserProfile
+
+
+class CustomAuthenticationForm(AuthenticationForm):
+    pass
+
+
+class ArtworkForm(forms.ModelForm):
+    class Meta:
+        model = Artwork
+        fields = ['title', 'description', 'price', 'image']
+
+
+class UserProfileForm(forms.ModelForm):
+    class Meta:
+        model = UserProfile  # کلاس مدل مورد نظر را اینجا تعیین کنید
+        fields = ['phone_number', 'first_name', 'last_name', 'national_code', 'email', 'telegramID',
+                  'digital_wallet_address']
+
+
+class UserProfileUpdateForm(forms.Form):
+    first_name = forms.CharField(label='نام')
+    last_name = forms.CharField(label='نام خانوادگی')
+    phone_number = forms.CharField(label='شماره تلفن')
+    email = forms.EmailField(label='ایمیل')
+    telegram_id = forms.CharField(label='آیدی تلگرام')
+    instagram_id = forms.CharField(label='آیدی اینستاگرام')
+    digital_wallet_address = forms.CharField(label='آدرس کیف دیجیتال')
+
+==================================================
+
+
+
+==================== urls.py ====================
+from django.conf import settings
+from django.urls import path
+from .views import signup, user_login, dashboard, add_artwork, gallery, logout_view, user_gallery,\
+    user_gallery_by_user, complete_profile, purchase, delete_artwork
+from django.conf.urls.static import static
+
+urlpatterns = [
+                  path('signup/', signup, name='signup'),
+                  path('login/', user_login, name='login'),
+                  path('dashboard/', dashboard, name='dashboard'),
+                  path('add_artwork/', add_artwork, name='add_artwork'),
+                  path('', gallery, name='gallery'),
+                  path('logout/', logout_view, name='logout'),
+                  path('user_gallery/<int:user_id>/', user_gallery, name='user_gallery'),
+                  path('user_gallery/<str:username>/', user_gallery_by_user, name='user_gallery'),
+                  path('complete_profile/', complete_profile, name='complete_profile'),
+                  path('purchase/<int:artwork_id>/', purchase, name='purchase'),
+                  path('delete_artwork/<int:artwork_id>/', delete_artwork, name='delete_artwork'),
+                  # مسیر‌های دیگر...
+              ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+
+==================================================
+
+
+
+==================== views.py ====================
+from django import forms
+from django.contrib.auth.decorators import login_required
+from django.contrib.auth.forms import UserCreationForm
+from django.contrib.auth.models import User
+from django.db.models import Q
+from django.urls import reverse
+
+from .models import UserProfile
+from django.contrib.auth import authenticate, login, logout
+from django.shortcuts import render, redirect, get_object_or_404
+from django.contrib import messages
+from .forms import CustomAuthenticationForm, ArtworkForm, Artwork, UserProfileForm, UserProfileUpdateForm
+
+
+def user_login(request):
+    if request.method == 'POST':
+        form = CustomAuthenticationForm(request, data=request.POST)
+        if form.is_valid():
+            username = form.cleaned_data['username']
+            password = form.cleaned_data['password']
+            user = authenticate(request, username=username, password=password)
+
+            if user is not None:
+                login(request, user)
+                return redirect('dashboard')  # هدایت به داشبورد
+            else:
+                messages.error(request, 'نام کاربری یا رمز عبور نادرست است.')
+    else:
+        form = CustomAuthenticationForm()
+
+    return render(request, 'login.html', {'form': form})
+
+
+class CustomUserCreationForm(UserCreationForm):
+    age = forms.IntegerField(required=False)
+    # دیگر فیلدها...
+    # مثلا:
+    # phone_number = forms.CharField(max_length=15, required=False)
+
+
+def signup(request):
+    if request.method == 'POST':
+        form = UserCreationForm(request.POST)
+        if form.is_valid():
+            user = form.save()
+
+            # چک کنید آیا برای این کاربر قبلاً UserProfile ایجاد شده یا نه
+            if not UserProfile.objects.filter(user=user).exists():
+                # ایجاد یک نمونه از مدل UserProfile و ارتباط آن با کاربر
+                UserProfile.objects.create(
+                    user=user,
+                    # سایر فیلدها...
+                    # مثلا:
+                    # phone_number=form.cleaned_data['phone_number'],
+                )
+
+            messages.success(request, 'ثبت نام با موفقیت انجام شد. حالا می‌توانید وارد شوید.')
+            return redirect('login')  # هدایت به صفحه لاگین
+        else:
+            errors = form.errors.get_json_data()
+            for field, field_errors in errors.items():
+                for error in field_errors:
+                    messages.error(request, f'{field}: {error["message"]}')
+    else:
+        form = CustomUserCreationForm()
+    return render(request, 'signup.html', {'form': form})
+
+
+# در فایل views.py
+@login_required(login_url='login')
+def dashboard(request):
+    user_profile = UserProfile.objects.get(user=request.user)
+    if request.user.is_authenticated:
+        username = request.user.username
+        welcome_message = f'کاربر عزیز {username} سایت خوش آمدید.'
+        messages.success(request, welcome_message)
+
+        # اضافه کردن لینک به صفحه تکمیل اطلاعات
+        complete_profile_link = reverse('complete_profile')
+    else:
+        messages.warning(request, 'شما وارد نشده‌اید.')
+        complete_profile_link = None
+
+    # بقیه کد‌های ویو...
+
+    return render(request, 'dashboard.html',
+                  {'complete_profile_link': complete_profile_link, 'user_profile': user_profile})
+
+    # views.py
+
+
+def add_artwork(request):
+    if request.method == 'POST':
+        form = ArtworkForm(request.POST, request.FILES)
+        if form.is_valid():
+            artwork = form.save(commit=False)
+            artwork.uploaded_by = request.user
+            artwork.save()
+            messages.success(request, 'اثر با موفقیت اضافه شد.')
+            return redirect('gallery')
+    else:
+        form = ArtworkForm()
+    return render(request, 'add_artwork.html', {'form': form})
+
+
+def gallery(request):
+    search_query = request.GET.get('search', '')
+    artworks = Artwork.objects.filter(Q(title__icontains=search_query))
+    return render(request, 'gallery.html', {'artworks': artworks, 'search_query': search_query})
+
+    # views.py
+
+
+def logout_view(request):
+    logout(request)
+    return redirect('login')  # به جای 'home' مسیر مورد نظر خود را قرار دهید
+
+
+def user_gallery(request, user_id):
+    user_gallery_owner = User.objects.get(pk=user_id)
+    artworks = Artwork.objects.filter(uploaded_by=user_gallery_owner)
+    return render(request, 'user_gallery.html', {'artworks': artworks})
+
+
+def user_gallery_by_user(request, username):
+    user = get_object_or_404(User, username=username)
+    artworks = Artwork.objects.filter(uploaded_by=user)
+    return render(request, 'user_gallery.html', {'artworks': artworks, 'user': user})
+
+
+def complete_profile(request):
+    # چک کردن وجود UserProfile برای کاربر
+    if not hasattr(request.user, 'userprofile'):
+        # اگر UserProfile وجود نداشته باشد، آن را ایجاد کنید
+        UserProfile.objects.create(user=request.user)
+
+    if request.method == 'POST':
+        form = UserProfileForm(request.POST, instance=request.user.userprofile)
+        if form.is_valid():
+            form.save()
+            messages.success(request, 'اطلاعات با موفقیت ذخیره شدند.')
+            return redirect('dashboard')
+    else:
+        form = UserProfileForm(instance=request.user.userprofile)
+
+    return render(request, 'complete_profile.html', {'form': form})
+
+
+def purchase(request, artwork_id):
+    artwork = get_object_or_404(Artwork, id=artwork_id)
+
+    # اطلاعات مربوط به خرید را به صفحه ارسال کنید
+    context = {
+        'artwork': artwork,
+        'user_nickname': request.user.username,
+        'user_telegram_id': request.user.userprofile.telegramID,
+        'digital_wallet_address': request.user.userprofile.digital_wallet_address,
+
+    }
+
+    return render(request, 'purchase.html', context)
+
+
+
+def delete_artwork(request, artwork_id):
+    artwork = get_object_or_404(Artwork, id=artwork_id)
+
+    # اطمینان حاصل کنید که کاربر صاحب این آثار است یا نه
+    if artwork.uploaded_by == request.user:
+        artwork.delete()
+
+    return redirect('user_gallery', user_id=request.user.id)
+
+
+==================================================
+
+
+
+==================== models.py ====================
+# در فایل models.py
+from django.db import models
+from django.contrib.auth.models import User, AbstractUser, Permission, Group
+from django.db import models
+from django.utils import timezone
+
+# models.py
+from django.db import models
+from django.contrib.auth.models import User
+from django.db.models.signals import post_save
+from django.dispatch import receiver
+
+
+class UserProfile(models.Model):
+    user = models.OneToOneField(User, on_delete=models.CASCADE)
+    is_complete = models.BooleanField(default=False)
+    phone_number = models.CharField(max_length=15, null=True, blank=True)
+    first_name = models.CharField(max_length=30, null=True, blank=True)
+    last_name = models.CharField(max_length=30, null=True, blank=True)
+    national_code = models.CharField(max_length=10, null=True, blank=True)
+    email = models.EmailField(null=True, blank=True)
+    telegramID = models.CharField(max_length=30, null=True, blank=True)
+    digital_wallet_address = models.CharField(max_length=250, null=True, blank=True)
+
+
+@receiver(post_save, sender=User)
+def create_user_profile(sender, instance, created, **kwargs):
+    if created:
+        UserProfile.objects.create(user=instance)
+
+
+@receiver(post_save, sender=User)
+def save_user_profile(sender, instance, **kwargs):
+    instance.userprofile.save()
+
+
+class Artwork(models.Model):
+    title = models.CharField(max_length=85)
+    description = models.TextField(max_length=100)
+    price = models.PositiveIntegerField(default=0, max_length=10000000)
+    image = models.ImageField(upload_to='artwork_images/')
+    uploaded_by = models.ForeignKey(User, on_delete=models.CASCADE)
+
+    def __str__(self):
+        return self.title
+
+
+def user_directory_path(instance, filename):
+    # Upload to MEDIA_ROOT/user_<id>/<filename>
+    return f'user_{instance.id}/{filename}'
+
+
+class CustomUser(AbstractUser):
+    profile_picture = models.ImageField(upload_to=user_directory_path, null=True, blank=True)
+
+    groups = models.ManyToManyField(
+        Group,
+        verbose_name=('groups'),
+        blank=True,
+        help_text=(
+            'The groups this user belongs to. A user will get all permissions '
+            'granted to each of their groups.'
+        ),
+        related_name='customuser_set',
+    )
+    user_permissions = models.ManyToManyField(
+        Permission,
+        verbose_name=('user permissions'),
+        blank=True,
+        help_text=('Specific permissions for this user.'),
+        related_name='customuser_set',
+    )
+
+==================================================
+
+
+
+==================== forms.py ====================
+from django import forms
+from django.contrib.auth.forms import AuthenticationForm
+from .models import Artwork, UserProfile
+
+
+class CustomAuthenticationForm(AuthenticationForm):
+    pass
+
+
+class ArtworkForm(forms.ModelForm):
+    class Meta:
+        model = Artwork
+        fields = ['title', 'description', 'price', 'image']
+
+
+class UserProfileForm(forms.ModelForm):
+    class Meta:
+        model = UserProfile  # کلاس مدل مورد نظر را اینجا تعیین کنید
+        fields = ['phone_number', 'first_name', 'last_name', 'national_code', 'email', 'telegramID',
+                  'digital_wallet_address']
+
+
+class UserProfileUpdateForm(forms.Form):
+    first_name = forms.CharField(label='نام')
+    last_name = forms.CharField(label='نام خانوادگی')
+    phone_number = forms.CharField(label='شماره تلفن')
+    email = forms.EmailField(label='ایمیل')
+    telegram_id = forms.CharField(label='آیدی تلگرام')
+    instagram_id = forms.CharField(label='آیدی اینستاگرام')
+    digital_wallet_address = forms.CharField(label='آدرس کیف دیجیتال')
+
+==================================================
+
+
+
+==================== templates\add_artwork.html ====================
+<!DOCTYPE html>
+<html lang="fa">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Add art to gallery</title>
+    <style>
+        /* styles.css */
+
+        body {
+            font-family: 'Tahoma', sans-serif;
+            background-color: #f4f4f4;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+        }
+
+        h2 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 20px;
+        }
+
+        form {
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #555;
+        }
+
+        input {
+            width: 100%;
+            padding: 10px;
+            margin-bottom: 16px;
+            box-sizing: border-box;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+
+        button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 12px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+
+        button:hover {
+            background-color: #45a049;
+        }
+
+    </style>
+</head>
+<body>
+
+
+<form method="post" enctype="multipart/form-data">
+    <h2>Sell your art</h2>
+    {% csrf_token %}
+    {{ form.as_p }}
+    <button type="submit">Add to gallery</button>
+</form>
+</body>
+</html>
+
+==================================================
+
+
+
+==================== templates\complete_profile.html ====================
+<!-- درون فایل complete_profile.html -->
+<!DOCTYPE html>
+<html lang="fa">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Complete Profile</title>
+    <style>
+        body {
+            font-family: 'Tahoma', sans-serif;
+            background-color: #f4f4f4;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            min-height: 100vh;
+        }
+
+        form {
+            width: 300px;
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+
+        form label {
+            font-size: 16px;
+            margin-bottom: 8px;
+            display: block;
+        }
+
+        form input[type="text"],
+        form input[type="email"] {
+            width: 100%;
+            padding: 8px;
+            margin-bottom: 16px;
+            box-sizing: border-box;
+        }
+
+        form button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 12px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background-color 0.3s ease;
+        }
+
+        form button:hover {
+            background-color: #45a049;
+        }
+
+    </style>
+</head>
+<body>
+<form method="post">
+    {% csrf_token %}
+    {{ form.as_p }}
+    <button type="submit">Save information</button>
+</form>
+</body>
+</html>
+
+==================================================
+
+
+
+==================== templates\dashboard.html ====================
+<!DOCTYPE html>
+<html lang="fa">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>پیام‌ها</title>
+    <style>
+        /* styles.css */
+
+        body {
+            font-family: 'Tahoma', sans-serif;
+            background-color: #f4f4f4;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+        }
+
+        .messages {
+            list-style: none;
+            padding: 0;
+        }
+
+        .messages li {
+            margin-bottom: 8px;
+            padding: 10px;
+            border-radius: 4px;
+        }
+
+        .error {
+            background-color: #ffcccc;
+            color: #cc0000;
+        }
+
+        .success {
+            background-color: #ccffcc;
+            color: #006600;
+        }
+
+        .warning {
+            background-color: #ffeb99;
+            color: #cc7a00;
+        }
+
+        .info {
+            background-color: #cce5ff;
+            color: #0066cc;
+        }
+
+        table {
+            border-collapse: collapse;
+            width: 100%;
+            margin-top: 20px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        th, td {
+            padding: 15px;
+            text-align: center;
+        }
+
+        th {
+            background-color: #343a40;
+            color: #ffffff;
+        }
+
+        td {
+            background-color: #e6e6e6;
+        }
+
+        a {
+            display: block;
+            text-decoration: none;
+            color: #ffffff; /* رنگ متن دکمه */
+            background-color: #4CAF50; /* رنگ پس زمینه دکمه */
+            border-radius: 4px;
+            padding: 10px;
+            transition: background-color 0.3s ease;
+            font-size: 14px; /* اندازه فونت دکمه */
+        }
+
+        a:hover {
+            background-color: #45a049; /* رنگ پس زمینه دکمه در حالت هاور */
+        }
+
+
+    </style>
+</head>
+<body>
+
+
+<table>
+    <thead>
+    <!-- درون فایل base.html یا navbar.html -->
+    </thead>
+    <tr>
+        <th>
+            {% if user.is_authenticated %}
+            {% if not user.userprofile.is_complete %}
+            <a href="{% url 'complete_profile' %}">Complete your profile</a>
+            {% endif %}
+            {% else %}
+            <p>شما وارد نشده‌اید.</p>
+            {% endif %}
+        </th>
+    </tr>
+    <tr>
+        <th><a href="{% url 'add_artwork' %}">Add art to gallery</a></th>
+    </tr>
+    <tr>
+        <td><a href="{% url 'gallery' %}">Artists Gallery</a></td>
+    </tr>
+    <tr>
+        <td><a href="{% url 'user_gallery' user.id %}">Personal Gallery</a></td>
+    </tr>
+    <!-- dashboard.html -->
+    <tr>
+        <td><a href="{% url 'logout' %}">Logout</a></td>
+    </tr>
+
+    <tr>
+        <td>{{ user_profile.user.first_name }} {{ user_profile.user.last_name }}</h2>
+            <p>phone number: {{ user_profile.phone_number }}</p>
+            <p>email: {{ user_profile.email }}</p>
+            <p>telgram: {{user_profile.telegramID}}</p></td>
+    </tr>
+</table>
+
+</body>
+</html>
+
+==================================================
+
+
+
+==================== templates\gallery.html ====================
+<!DOCTYPE html>
+<html lang="fa">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>گالری</title>
+    <style>
+        body {
+            font-family: 'Tahoma', sans-serif;
+            background-color: #f4f4f4;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            height: 100vh;
+        }
+
+        nav {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            background-color: cadetblue;
+            padding: 15px;
+            text-align: center;
+            z-index: 1000;
+        }
+
+        nav a {
+            color: white;
+            text-decoration: none;
+            padding: 10px 15px;
+            margin: 0 5px;
+            border-radius: 5px;
+            transition: background-color 0.3s ease;
+            background-color: #4CAF50;
+        }
+
+        nav a:hover {
+            background-color: darkgreen;
+        }
+
+        .gallery {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 16px;
+            margin-top: 20px;
+        }
+
+        .artwork {
+            text-align: center;
+            background-color: #fff;
+            padding: 16px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            margin-top: 10px;
+        }
+
+
+        .artwork h3 {
+            margin-bottom: 8px;
+            color: #007BFF;
+        }
+
+        .artwork p {
+            margin-bottom: 16px;
+            color: #555;
+        }
+
+        .artwork img {
+            max-width: 100%;
+            height: auto;
+            border-radius: 8px;
+            margin-top: 10px;
+        }
+
+        .artwork p.uploaded-by {
+            color: #6C757D;
+        }
+
+        form {
+            display: flex;
+            margin-top: 10px;
+        }
+
+        form input {
+            padding: 10px;
+            border-radius: 4px 0 0 4px;
+            border: 1px solid #ccc;
+        }
+
+        form button {
+            padding: 10px;
+            border-radius: 0 4px 4px 0;
+            background-color: #4CAF50;
+            color: white;
+            cursor: pointer;
+        }
+
+        form input,
+        form button {
+            border: none;
+            outline: none;
+        }
+
+        form input:focus {
+            border-color: #4CAF50;
+        }
+
+        /* در بخش استایل‌ها */
+        .artwork p {
+            margin-bottom: 16px;
+            color: #555;
+            overflow: hidden; /* جلوگیری از ترتیب */
+            text-overflow: ellipsis; /* نمایش نقطه‌سه تا نشان دادن متن بیشتر */
+            white-space: nowrap; /* جلوگیری از شکست خط */
+        }
+
+    </style>
+</head>
+<body>
+<nav>
+    {% if user.is_authenticated %}
+    <a href="{% url 'dashboard' %}">Your dashboard</a>
+    {% else %}
+    <a href="{% url 'login' %}">Login</a>
+    <a href="{% url 'signup' %}">Join us</a>
+    {% endif %}
+
+    <form method="GET" action="{% url 'gallery' %}">
+        <input type="text" name="search" placeholder="Enter name of the art...">
+        <button type="submit">Search</button>
+    </form>
+
+</nav>
+<div class="gallery">
+    {% if search_query %}
+    <p>Your search: <strong>{{ search_query }}</strong></p>
+    {% endif %}
+    {% for artwork in artworks %}
+    <div class="artwork">
+        <h3>{{ artwork.title }}</h3>
+        <p>{{ artwork.description }}</p>
+        <p>Price: {{ artwork.price }} Toman</p>
+        <p>Created by:</p>
+        <a href="{% url 'user_gallery' username=artwork.uploaded_by.username %}">
+            {{ artwork.uploaded_by.username }}
+        </a>
+
+        <img src="{{ artwork.image.url }}" alt="{{ artwork.title }}">
+
+        <a href="{% url 'purchase' artwork_id=artwork.id %}">Donation</a>
+
+    </div>
+    {% endfor %}
+</div>
+
+<script>
+    document.addEventListener('contextmenu', event => event.preventDefault());
+</script>
+
+</body>
+</html>
+
+==================================================
+
+
+
+==================== templates\login.html ====================
+<!DOCTYPE html>
+<html lang="fa">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>وارد شدن به حساب کاربر</title>
+    <style>
+        /* styles.css */
+
+        body {
+            font-family: 'Tahoma', sans-serif;
+            background-color: #f4f4f4;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+        }
+
+        form {
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1)
+        }
+
+        h2 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 20px; /* افزودن فاصله بین عنوان و فرم */
+            margin-top: 0; /* حذف فاصله بالای عنوان */
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #555;
+        }
+
+        input {
+            width: 100%;
+            padding: 10px;
+            margin-bottom: 16px;
+            box-sizing: border-box;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+
+        button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 12px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+
+        button:hover {
+            background-color: #45a049;
+        }
+
+    </style>
+</head>
+<body>
+
+<form method="post" action="{% url 'login' %}">
+    <h2>Login to Darts</h2>
+    {% csrf_token %}
+    {{ form.as_p }}
+    <button type="submit">Login</button>
+</form>
+</body>
+</html>
+
+==================================================
+
+
+
+==================== templates\purchase.html ====================
+<!DOCTYPE html>
+<html lang="fa">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Donate your artist</title>
+    <style>/* درون تگ style یا یک فایل سی اس اس خارجی */
+    body {
+        font-family: 'Tahoma', sans-serif;
+        background-color: #f4f4f4;
+        margin: 0;
+        padding: 20px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-direction: column;
+        min-height: 100vh;
+    }
+
+    p {
+        font-size: 24px;
+        color: #333;
+        margin-bottom: 20px;
+    }
+
+    ul {
+        list-style-type: none;
+        padding: 0;
+    }
+
+    li {
+        font-size: 18px;
+        color: #555;
+        margin-bottom: 10px;
+    }
+
+    button {
+        background-color: #4CAF50;
+        color: white;
+        padding: 15px 30px;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 18px;
+        transition: background-color 0.3s ease;
+    }
+
+    button:hover {
+        background-color: #45a049;
+    }
+
+    a {
+        display: inline-block;
+        background-color: #2196F3;
+        color: white;
+        padding: 15px 30px;
+        text-align: center;
+        text-decoration: none;
+        font-size: 18px;
+        border-radius: 4px;
+        transition: background-color 0.3s ease;
+    }
+
+    a:hover {
+        background-color: #0b7dda;
+    }
+
+    </style>
+</head>
+<body>
+
+<p>Donate your artist:</p>
+<ul>
+    <li><strong>Art name:</strong> {{ artwork.title }}</li>
+    <li><strong>Art description:</strong> {{ artwork.description }}</li>
+    <li><strong>Price:</strong> {{ artwork.price }} Toman</li>
+    <li><strong>Artist name:</strong> {{ artwork.uploaded_by.username }}</li>
+    <li><strong>Telegram ID of artist:</strong> {{ artwork.uploaded_by.userprofile.telegramID }}</li>
+    <li><strong>Artist wallet address(USDT):</strong> {{ artwork.uploaded_by.userprofile.digital_wallet_address }}</li>
+</ul>
+
+<a type="button" href="{% url 'gallery' %}">Back to gallery</a>
+
+
+</body>
+</html>
+
+==================================================
+
+
+
+==================== templates\signup.html ====================
+<!DOCTYPE html>
+<html lang="fa">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>فرم ثبت نام</title>
+    <style>
+        /* styles.css */
+
+        body {
+            font-family: 'Tahoma', sans-serif;
+            background-color: #f4f4f4;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+        }
+
+        form {
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+
+        h2 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 20px; /* افزودن فاصله بین عنوان و فرم */
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #555;
+        }
+
+        input {
+            width: 100%;
+            padding: 10px;
+            margin-bottom: 16px;
+            box-sizing: border-box;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+
+        button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 12px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+
+        button:hover {
+            background-color: #45a049;
+        }
+    </style>
+</head>
+<body>
+
+
+<form method="post" action="{% url 'signup' %}">
+    <h2>Join us</h2>
+    {% csrf_token %}
+
+    {{ form.as_p }}
+
+    <button type="submit">Join to artists</button>
+</form>
+
+
+</body>
+</html>
+
+==================================================
+
+
+
+==================== templates\user_gallery.html ====================
+<!DOCTYPE html>
+<html lang="fa">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Personal Gallery</title>
+    <style>
+        body {
+            font-family: 'Tahoma', sans-serif;
+            background-color: #f4f4f4;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+        }
+
+        h2 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 20px;
+        }
+
+        .gallery {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 16px;
+            margin-top: 10px;
+        }
+
+        .artwork {
+            text-align: center;
+            background-color: #fff;
+            padding: 16px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            margin-top: 10px;
+        }
+
+        .artwork h3 {
+            margin-bottom: 8px;
+        }
+
+        .artwork p {
+            margin-bottom: 16px;
+            color: #555;
+        }
+
+        .artwork img {
+            max-width: 100%;
+            height: auto;
+            border-radius: 8px;
+        }
+
+        nav {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            background-color: cadetblue;
+            padding: 15px;
+            text-align: center;
+            z-index: 1000; /* افزودن عمق به لایه */
+        }
+
+        nav a {
+            color: white;
+            text-decoration: none;
+            padding: 10px 15px;
+            margin: 0 5px;
+            border-radius: 5px;
+            transition: background-color 0.3s ease;
+            background-color: #4CAF50;
+        }
+
+        nav a:hover {
+            background-color: darkgreen;
+        }
+
+        /* در بخش استایل‌ها */
+        .artwork p {
+            margin-bottom: 16px;
+            color: #555;
+            overflow: hidden; /* جلوگیری از ترتیب */
+            text-overflow: ellipsis; /* نمایش نقطه‌سه تا نشان دادن متن بیشتر */
+            white-space: nowrap; /* جلوگیری از شکست خط */
+        }
+
+    </style>
+</head>
+<body>
+<nav>
+    {% if user.is_authenticated %}
+    <a href="{% url 'dashboard' %}">Your dashboard</a>
+    {% else %}
+    <a href="{% url 'login' %}">Login</a>
+    <a href="{% url 'signup' %}">Join us</a>
+    {% endif %}
+</nav>
+<div class="gallery">
+    {% for artwork in artworks %}
+    <div class="artwork">
+        <h3>{{ artwork.title }}</h3>
+        <p>{{ artwork.description }}</p>
+        <p>Price: {{ artwork.price }} Toman</p>
+        <p>Created by: {{ artwork.uploaded_by.username }}</p>
+        <img src="{{ artwork.image.url }}" alt="{{ artwork.title }}">
+        <a href="{% url 'delete_artwork' artwork_id=artwork.id %}">Delete Art</a>
+    </div>
+    {% endfor %}
+</div>
+<script>
+    document.addEventListener('contextmenu', event => event.preventDefault());
+</script>
+</body>
+</html>
+
+==================================================
+
+
+
+==================== urls.py ====================
+from django.conf import settings
+from django.urls import path
+from .views import signup, user_login, dashboard, add_artwork, gallery, logout_view, user_gallery,\
+    user_gallery_by_user, complete_profile, purchase, delete_artwork
+from django.conf.urls.static import static
+
+urlpatterns = [
+                  path('signup/', signup, name='signup'),
+                  path('login/', user_login, name='login'),
+                  path('dashboard/', dashboard, name='dashboard'),
+                  path('add_artwork/', add_artwork, name='add_artwork'),
+                  path('', gallery, name='gallery'),
+                  path('logout/', logout_view, name='logout'),
+                  path('user_gallery/<int:user_id>/', user_gallery, name='user_gallery'),
+                  path('user_gallery/<str:username>/', user_gallery_by_user, name='user_gallery'),
+                  path('complete_profile/', complete_profile, name='complete_profile'),
+                  path('purchase/<int:artwork_id>/', purchase, name='purchase'),
+                  path('delete_artwork/<int:artwork_id>/', delete_artwork, name='delete_artwork'),
+                  # مسیر‌های دیگر...
+              ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+
+==================================================
+
+
+
+==================== views.py ====================
+from django import forms
+from django.contrib.auth.decorators import login_required
+from django.contrib.auth.forms import UserCreationForm
+from django.contrib.auth.models import User
+from django.db.models import Q
+from django.urls import reverse
+
+from .models import UserProfile
+from django.contrib.auth import authenticate, login, logout
+from django.shortcuts import render, redirect, get_object_or_404
+from django.contrib import messages
+from .forms import CustomAuthenticationForm, ArtworkForm, Artwork, UserProfileForm, UserProfileUpdateForm
+
+
+def user_login(request):
+    if request.method == 'POST':
+        form = CustomAuthenticationForm(request, data=request.POST)
+        if form.is_valid():
+            username = form.cleaned_data['username']
+            password = form.cleaned_data['password']
+            user = authenticate(request, username=username, password=password)
+
+            if user is not None:
+                login(request, user)
+                return redirect('dashboard')  # هدایت به داشبورد
+            else:
+                messages.error(request, 'نام کاربری یا رمز عبور نادرست است.')
+    else:
+        form = CustomAuthenticationForm()
+
+    return render(request, 'login.html', {'form': form})
+
+
+class CustomUserCreationForm(UserCreationForm):
+    age = forms.IntegerField(required=False)
+    # دیگر فیلدها...
+    # مثلا:
+    # phone_number = forms.CharField(max_length=15, required=False)
+
+
+def signup(request):
+    if request.method == 'POST':
+        form = UserCreationForm(request.POST)
+        if form.is_valid():
+            user = form.save()
+
+            # چک کنید آیا برای این کاربر قبلاً UserProfile ایجاد شده یا نه
+            if not UserProfile.objects.filter(user=user).exists():
+                # ایجاد یک نمونه از مدل UserProfile و ارتباط آن با کاربر
+                UserProfile.objects.create(
+                    user=user,
+                    # سایر فیلدها...
+                    # مثلا:
+                    # phone_number=form.cleaned_data['phone_number'],
+                )
+
+            messages.success(request, 'ثبت نام با موفقیت انجام شد. حالا می‌توانید وارد شوید.')
+            return redirect('login')  # هدایت به صفحه لاگین
+        else:
+            errors = form.errors.get_json_data()
+            for field, field_errors in errors.items():
+                for error in field_errors:
+                    messages.error(request, f'{field}: {error["message"]}')
+    else:
+        form = CustomUserCreationForm()
+    return render(request, 'signup.html', {'form': form})
+
+
+# در فایل views.py
+@login_required(login_url='login')
+def dashboard(request):
+    user_profile = UserProfile.objects.get(user=request.user)
+    if request.user.is_authenticated:
+        username = request.user.username
+        welcome_message = f'کاربر عزیز {username} سایت خوش آمدید.'
+        messages.success(request, welcome_message)
+
+        # اضافه کردن لینک به صفحه تکمیل اطلاعات
+        complete_profile_link = reverse('complete_profile')
+    else:
+        messages.warning(request, 'شما وارد نشده‌اید.')
+        complete_profile_link = None
+
+    # بقیه کد‌های ویو...
+
+    return render(request, 'dashboard.html',
+                  {'complete_profile_link': complete_profile_link, 'user_profile': user_profile})
+
+    # views.py
+
+
+def add_artwork(request):
+    if request.method == 'POST':
+        form = ArtworkForm(request.POST, request.FILES)
+        if form.is_valid():
+            artwork = form.save(commit=False)
+            artwork.uploaded_by = request.user
+            artwork.save()
+            messages.success(request, 'اثر با موفقیت اضافه شد.')
+            return redirect('gallery')
+    else:
+        form = ArtworkForm()
+    return render(request, 'add_artwork.html', {'form': form})
+
+
+def gallery(request):
+    search_query = request.GET.get('search', '')
+    artworks = Artwork.objects.filter(Q(title__icontains=search_query))
+    total_users = User.objects.count()
+    return render(request, 'gallery.html', {'artworks': artworks, 'search_query': search_query,'total_users': total_users})
+
+    # views.py
+
+
+def logout_view(request):
+    logout(request)
+    return redirect('login')  # به جای 'home' مسیر مورد نظر خود را قرار دهید
+
+
+def user_gallery(request, user_id):
+    user_gallery_owner = User.objects.get(pk=user_id)
+    artworks = Artwork.objects.filter(uploaded_by=user_gallery_owner)
+    return render(request, 'user_gallery.html', {'artworks': artworks})
+
+
+def user_gallery_by_user(request, username):
+    user = get_object_or_404(User, username=username)
+    artworks = Artwork.objects.filter(uploaded_by=user)
+    return render(request, 'user_gallery.html', {'artworks': artworks, 'user': user})
+
+
+def complete_profile(request):
+    # چک کردن وجود UserProfile برای کاربر
+    if not hasattr(request.user, 'userprofile'):
+        # اگر UserProfile وجود نداشته باشد، آن را ایجاد کنید
+        UserProfile.objects.create(user=request.user)
+
+    if request.method == 'POST':
+        form = UserProfileForm(request.POST, instance=request.user.userprofile)
+        if form.is_valid():
+            form.save()
+            messages.success(request, 'اطلاعات با موفقیت ذخیره شدند.')
+            return redirect('dashboard')
+    else:
+        form = UserProfileForm(instance=request.user.userprofile)
+
+    return render(request, 'complete_profile.html', {'form': form})
+
+
+def purchase(request, artwork_id):
+    artwork = get_object_or_404(Artwork, id=artwork_id)
+
+    # اطلاعات مربوط به خرید را به صفحه ارسال کنید
+    context = {
+        'artwork': artwork,
+        'user_nickname': request.user.username,
+        'user_telegram_id': request.user.userprofile.telegramID,
+        'digital_wallet_address': request.user.userprofile.digital_wallet_address,
+
+    }
+
+    return render(request, 'purchase.html', context)
+
+
+
+def delete_artwork(request, artwork_id):
+    artwork = get_object_or_404(Artwork, id=artwork_id)
+
+    # اطمینان حاصل کنید که کاربر صاحب این آثار است یا نه
+    if artwork.uploaded_by == request.user:
+        artwork.delete()
+
+    return redirect('user_gallery', user_id=request.user.id)
+
+
+==================================================
+
+
+
+==================== models.py ====================
+# در فایل models.py
+from django.db import models
+from django.contrib.auth.models import User, AbstractUser, Permission, Group
+from django.db import models
+from django.utils import timezone
+
+# models.py
+from django.db import models
+from django.contrib.auth.models import User
+from django.db.models.signals import post_save
+from django.dispatch import receiver
+
+
+class UserProfile(models.Model):
+    user = models.OneToOneField(User, on_delete=models.CASCADE)
+    is_complete = models.BooleanField(default=False)
+    phone_number = models.CharField(max_length=15, null=True, blank=True)
+    first_name = models.CharField(max_length=30, null=True, blank=True)
+    last_name = models.CharField(max_length=30, null=True, blank=True)
+    national_code = models.CharField(max_length=10, null=True, blank=True)
+    email = models.EmailField(null=True, blank=True)
+    telegramID = models.CharField(max_length=30, null=True, blank=True)
+    digital_wallet_address = models.CharField(max_length=250, null=True, blank=True)
+
+
+@receiver(post_save, sender=User)
+def create_user_profile(sender, instance, created, **kwargs):
+    if created:
+        UserProfile.objects.create(user=instance)
+
+
+@receiver(post_save, sender=User)
+def save_user_profile(sender, instance, **kwargs):
+    instance.userprofile.save()
+
+
+class Artwork(models.Model):
+    title = models.CharField(max_length=85)
+    description = models.TextField(max_length=100)
+    price = models.PositiveIntegerField(default=0, max_length=10000000)
+    image = models.ImageField(upload_to='artwork_images/')
+    uploaded_by = models.ForeignKey(User, on_delete=models.CASCADE)
+
+    def __str__(self):
+        return self.title
+
+
+def user_directory_path(instance, filename):
+    # Upload to MEDIA_ROOT/user_<id>/<filename>
+    return f'user_{instance.id}/{filename}'
+
+
+class CustomUser(AbstractUser):
+    profile_picture = models.ImageField(upload_to=user_directory_path, null=True, blank=True)
+
+    groups = models.ManyToManyField(
+        Group,
+        verbose_name=('groups'),
+        blank=True,
+        help_text=(
+            'The groups this user belongs to. A user will get all permissions '
+            'granted to each of their groups.'
+        ),
+        related_name='customuser_set',
+    )
+    user_permissions = models.ManyToManyField(
+        Permission,
+        verbose_name=('user permissions'),
+        blank=True,
+        help_text=('Specific permissions for this user.'),
+        related_name='customuser_set',
+    )
+
+==================================================
+
+
+
+==================== forms.py ====================
+from django import forms
+from django.contrib.auth.forms import AuthenticationForm
+from .models import Artwork, UserProfile
+
+
+class CustomAuthenticationForm(AuthenticationForm):
+    pass
+
+
+class ArtworkForm(forms.ModelForm):
+    class Meta:
+        model = Artwork
+        fields = ['title', 'description', 'price', 'image']
+
+
+class UserProfileForm(forms.ModelForm):
+    class Meta:
+        model = UserProfile  # کلاس مدل مورد نظر را اینجا تعیین کنید
+        fields = ['phone_number', 'first_name', 'last_name', 'national_code', 'email', 'telegramID',
+                  'digital_wallet_address']
+
+
+class UserProfileUpdateForm(forms.Form):
+    first_name = forms.CharField(label='نام')
+    last_name = forms.CharField(label='نام خانوادگی')
+    phone_number = forms.CharField(label='شماره تلفن')
+    email = forms.EmailField(label='ایمیل')
+    telegram_id = forms.CharField(label='آیدی تلگرام')
+    instagram_id = forms.CharField(label='آیدی اینستاگرام')
+    digital_wallet_address = forms.CharField(label='آدرس کیف دیجیتال')
+
+==================================================
+
+
+
+==================== templates\add_artwork.html ====================
+<!DOCTYPE html>
+<html lang="fa">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Add art to gallery</title>
+    <style>
+        /* styles.css */
+
+        body {
+            font-family: 'Tahoma', sans-serif;
+            background-color: #f4f4f4;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+        }
+
+        h2 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 20px;
+        }
+
+        form {
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #555;
+        }
+
+        input {
+            width: 100%;
+            padding: 10px;
+            margin-bottom: 16px;
+            box-sizing: border-box;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+
+        button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 12px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+
+        button:hover {
+            background-color: #45a049;
+        }
+
+    </style>
+</head>
+<body>
+
+
+<form method="post" enctype="multipart/form-data">
+    <h2>Sell your art</h2>
+    {% csrf_token %}
+    {{ form.as_p }}
+    <button type="submit">Add to gallery</button>
+</form>
+</body>
+</html>
+
+==================================================
+
+
+
+==================== templates\complete_profile.html ====================
+<!-- درون فایل complete_profile.html -->
+<!DOCTYPE html>
+<html lang="fa">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Complete Profile</title>
+    <style>
+        body {
+            font-family: 'Tahoma', sans-serif;
+            background-color: #f4f4f4;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            min-height: 100vh;
+        }
+
+        form {
+            width: 300px;
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+
+        form label {
+            font-size: 16px;
+            margin-bottom: 8px;
+            display: block;
+        }
+
+        form input[type="text"],
+        form input[type="email"] {
+            width: 100%;
+            padding: 8px;
+            margin-bottom: 16px;
+            box-sizing: border-box;
+        }
+
+        form button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 12px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background-color 0.3s ease;
+        }
+
+        form button:hover {
+            background-color: #45a049;
+        }
+
+    </style>
+</head>
+<body>
+<form method="post">
+    {% csrf_token %}
+    {{ form.as_p }}
+    <button type="submit">Save information</button>
+</form>
+</body>
+</html>
+
+==================================================
+
+
+
+==================== templates\dashboard.html ====================
+<!DOCTYPE html>
+<html lang="fa">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>پیام‌ها</title>
+    <style>
+        /* styles.css */
+
+        body {
+            font-family: 'Tahoma', sans-serif;
+            background-color: #f4f4f4;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+        }
+
+        .messages {
+            list-style: none;
+            padding: 0;
+        }
+
+        .messages li {
+            margin-bottom: 8px;
+            padding: 10px;
+            border-radius: 4px;
+        }
+
+        .error {
+            background-color: #ffcccc;
+            color: #cc0000;
+        }
+
+        .success {
+            background-color: #ccffcc;
+            color: #006600;
+        }
+
+        .warning {
+            background-color: #ffeb99;
+            color: #cc7a00;
+        }
+
+        .info {
+            background-color: #cce5ff;
+            color: #0066cc;
+        }
+
+        table {
+            border-collapse: collapse;
+            width: 100%;
+            margin-top: 20px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        th, td {
+            padding: 15px;
+            text-align: center;
+        }
+
+        th {
+            background-color: #343a40;
+            color: #ffffff;
+        }
+
+        td {
+            background-color: #e6e6e6;
+        }
+
+        a {
+            display: block;
+            text-decoration: none;
+            color: #ffffff; /* رنگ متن دکمه */
+            background-color: #4CAF50; /* رنگ پس زمینه دکمه */
+            border-radius: 4px;
+            padding: 10px;
+            transition: background-color 0.3s ease;
+            font-size: 14px; /* اندازه فونت دکمه */
+        }
+
+        a:hover {
+            background-color: #45a049; /* رنگ پس زمینه دکمه در حالت هاور */
+        }
+
+
+    </style>
+</head>
+<body>
+
+
+<table>
+    <thead>
+    <!-- درون فایل base.html یا navbar.html -->
+    </thead>
+    <tr>
+        <th>
+            {% if user.is_authenticated %}
+            {% if not user.userprofile.is_complete %}
+            <a href="{% url 'complete_profile' %}">Complete your profile</a>
+            {% endif %}
+            {% else %}
+            <p>شما وارد نشده‌اید.</p>
+            {% endif %}
+        </th>
+    </tr>
+    <tr>
+        <th><a href="{% url 'add_artwork' %}">Add art to gallery</a></th>
+    </tr>
+    <tr>
+        <td><a href="{% url 'gallery' %}">Artists Gallery</a></td>
+    </tr>
+    <tr>
+        <td><a href="{% url 'user_gallery' user.id %}">Personal Gallery</a></td>
+    </tr>
+    <!-- dashboard.html -->
+    <tr>
+        <td><a href="{% url 'logout' %}">Logout</a></td>
+    </tr>
+
+    <tr>
+        <td>{{ user_profile.user.first_name }} {{ user_profile.user.last_name }}</h2>
+            <p>phone number: {{ user_profile.phone_number }}</p>
+            <p>email: {{ user_profile.email }}</p>
+            <p>telgram: {{user_profile.telegramID}}</p></td>
+    </tr>
+</table>
+
+</body>
+</html>
+
+==================================================
+
+
+
+==================== templates\gallery.html ====================
+<!DOCTYPE html>
+<html lang="fa">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>گالری</title>
+    <style>
+        body {
+            font-family: 'Tahoma', sans-serif;
+            background-color: #f4f4f4;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            height: 100vh;
+        }
+
+        nav {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            background-color: cadetblue;
+            padding: 15px;
+            text-align: center;
+            z-index: 1000;
+        }
+
+        nav a {
+            color: white;
+            text-decoration: none;
+            padding: 10px 15px;
+            margin: 0 5px;
+            border-radius: 5px;
+            transition: background-color 0.3s ease;
+            background-color: #4CAF50;
+        }
+
+        nav a:hover {
+            background-color: darkgreen;
+        }
+
+        .gallery {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 16px;
+            margin-top: 20px;
+        }
+
+        .artwork {
+            text-align: center;
+            background-color: #fff;
+            padding: 16px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            margin-top: 10px;
+        }
+
+
+        .artwork h3 {
+            margin-bottom: 8px;
+            color: #007BFF;
+        }
+
+        .artwork p {
+            margin-bottom: 16px;
+            color: #555;
+        }
+
+        .artwork img {
+            max-width: 100%;
+            height: auto;
+            border-radius: 8px;
+            margin-top: 10px;
+        }
+
+        .artwork p.uploaded-by {
+            color: #6C757D;
+        }
+
+        form {
+            display: flex;
+            margin-top: 10px;
+        }
+
+        form input {
+            padding: 10px;
+            border-radius: 4px 0 0 4px;
+            border: 1px solid #ccc;
+        }
+
+        form button {
+            padding: 10px;
+            border-radius: 0 4px 4px 0;
+            background-color: #4CAF50;
+            color: white;
+            cursor: pointer;
+        }
+
+        form input,
+        form button {
+            border: none;
+            outline: none;
+        }
+
+        form input:focus {
+            border-color: #4CAF50;
+        }
+
+        /* در بخش استایل‌ها */
+        .artwork p {
+            margin-bottom: 16px;
+            color: #555;
+            overflow: hidden; /* جلوگیری از ترتیب */
+            text-overflow: ellipsis; /* نمایش نقطه‌سه تا نشان دادن متن بیشتر */
+            white-space: nowrap; /* جلوگیری از شکست خط */
+        }
+
+    </style>
+</head>
+<body>
+<nav>
+    <p>Sell your digital art in Darts platform</p>
+    <p>Total Artists: {{ total_users }}</p>
+    {% if user.is_authenticated %}
+    <a href="{% url 'dashboard' %}">Your dashboard</a>
+    {% else %}
+    <a href="{% url 'login' %}">Login</a>
+    <a href="{% url 'signup' %}">Join us</a>
+    {% endif %}
+
+    <form method="GET" action="{% url 'gallery' %}">
+        <input type="text" name="search" placeholder="Enter name of the art...">
+        <button type="submit">Search</button>
+    </form>
+
+</nav>
+<div class="gallery">
+    {% if search_query %}
+    <p>Your search: <strong>{{ search_query }}</strong></p>
+    {% endif %}
+    {% for artwork in artworks %}
+    <div class="artwork">
+        <h3>{{ artwork.title }}</h3>
+        <p>{{ artwork.description }}</p>
+        <p>Price: {{ artwork.price }} Toman</p>
+        <p>Created by:</p>
+        <a href="{% url 'user_gallery' username=artwork.uploaded_by.username %}">
+            {{ artwork.uploaded_by.username }}
+        </a>
+
+        <img src="{{ artwork.image.url }}" alt="{{ artwork.title }}">
+
+        <a href="{% url 'purchase' artwork_id=artwork.id %}">Donation</a>
+
+    </div>
+    {% endfor %}
+</div>
+
+<script>
+    document.addEventListener('contextmenu', event => event.preventDefault());
+</script>
+
+</body>
+</html>
+
+==================================================
+
+
+
+==================== templates\login.html ====================
+<!DOCTYPE html>
+<html lang="fa">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>وارد شدن به حساب کاربر</title>
+    <style>
+        /* styles.css */
+
+        body {
+            font-family: 'Tahoma', sans-serif;
+            background-color: #f4f4f4;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+        }
+
+        form {
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1)
+        }
+
+        h2 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 20px; /* افزودن فاصله بین عنوان و فرم */
+            margin-top: 0; /* حذف فاصله بالای عنوان */
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #555;
+        }
+
+        input {
+            width: 100%;
+            padding: 10px;
+            margin-bottom: 16px;
+            box-sizing: border-box;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+
+        button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 12px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+
+        button:hover {
+            background-color: #45a049;
+        }
+
+    </style>
+</head>
+<body>
+
+<form method="post" action="{% url 'login' %}">
+    <h2>Login to Darts</h2>
+    {% csrf_token %}
+    {{ form.as_p }}
+    <button type="submit">Login</button>
+</form>
+</body>
+</html>
+
+==================================================
+
+
+
+==================== templates\purchase.html ====================
+<!DOCTYPE html>
+<html lang="fa">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Donate your artist</title>
+    <style>/* درون تگ style یا یک فایل سی اس اس خارجی */
+    body {
+        font-family: 'Tahoma', sans-serif;
+        background-color: #f4f4f4;
+        margin: 0;
+        padding: 20px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-direction: column;
+        min-height: 100vh;
+    }
+
+    p {
+        font-size: 24px;
+        color: #333;
+        margin-bottom: 20px;
+    }
+
+    ul {
+        list-style-type: none;
+        padding: 0;
+    }
+
+    li {
+        font-size: 18px;
+        color: #555;
+        margin-bottom: 10px;
+    }
+
+    button {
+        background-color: #4CAF50;
+        color: white;
+        padding: 15px 30px;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 18px;
+        transition: background-color 0.3s ease;
+    }
+
+    button:hover {
+        background-color: #45a049;
+    }
+
+    a {
+        display: inline-block;
+        background-color: #2196F3;
+        color: white;
+        padding: 15px 30px;
+        text-align: center;
+        text-decoration: none;
+        font-size: 18px;
+        border-radius: 4px;
+        transition: background-color 0.3s ease;
+    }
+
+    a:hover {
+        background-color: #0b7dda;
+    }
+
+    </style>
+</head>
+<body>
+
+<p>Donate your artist:</p>
+<ul>
+    <li><strong>Art name:</strong> {{ artwork.title }}</li>
+    <li><strong>Art description:</strong> {{ artwork.description }}</li>
+    <li><strong>Price:</strong> {{ artwork.price }} Toman</li>
+    <li><strong>Artist name:</strong> {{ artwork.uploaded_by.username }}</li>
+    <li><strong>Telegram ID of artist:</strong> {{ artwork.uploaded_by.userprofile.telegramID }}</li>
+    <li><strong>Artist wallet address(USDT):</strong> {{ artwork.uploaded_by.userprofile.digital_wallet_address }}</li>
+</ul>
+
+<a type="button" href="{% url 'gallery' %}">Back to gallery</a>
+
+
+</body>
+</html>
+
+==================================================
+
+
+
+==================== templates\signup.html ====================
+<!DOCTYPE html>
+<html lang="fa">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>فرم ثبت نام</title>
+    <style>
+        /* styles.css */
+
+        body {
+            font-family: 'Tahoma', sans-serif;
+            background-color: #f4f4f4;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+        }
+
+        form {
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+
+        h2 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 20px; /* افزودن فاصله بین عنوان و فرم */
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #555;
+        }
+
+        input {
+            width: 100%;
+            padding: 10px;
+            margin-bottom: 16px;
+            box-sizing: border-box;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+
+        button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 12px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+
+        button:hover {
+            background-color: #45a049;
+        }
+    </style>
+</head>
+<body>
+
+
+<form method="post" action="{% url 'signup' %}">
+    <h2>Join us</h2>
+    {% csrf_token %}
+
+    {{ form.as_p }}
+
+    <button type="submit">Join to artists</button>
+</form>
+
+
+</body>
+</html>
+
+==================================================
+
+
+
+==================== templates\user_gallery.html ====================
+<!DOCTYPE html>
+<html lang="fa">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Personal Gallery</title>
+    <style>
+        body {
+            font-family: 'Tahoma', sans-serif;
+            background-color: #f4f4f4;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+        }
+
+        h2 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 20px;
+        }
+
+        .gallery {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 16px;
+            margin-top: 10px;
+        }
+
+        .artwork {
+            text-align: center;
+            background-color: #fff;
+            padding: 16px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            margin-top: 10px;
+        }
+
+        .artwork h3 {
+            margin-bottom: 8px;
+        }
+
+        .artwork p {
+            margin-bottom: 16px;
+            color: #555;
+        }
+
+        .artwork img {
+            max-width: 100%;
+            height: auto;
+            border-radius: 8px;
+        }
+
+        nav {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            background-color: cadetblue;
+            padding: 15px;
+            text-align: center;
+            z-index: 1000; /* افزودن عمق به لایه */
+        }
+
+        nav a {
+            color: white;
+            text-decoration: none;
+            padding: 10px 15px;
+            margin: 0 5px;
+            border-radius: 5px;
+            transition: background-color 0.3s ease;
+            background-color: #4CAF50;
+        }
+
+        nav a:hover {
+            background-color: darkgreen;
+        }
+
+        /* در بخش استایل‌ها */
+        .artwork p {
+            margin-bottom: 16px;
+            color: #555;
+            overflow: hidden; /* جلوگیری از ترتیب */
+            text-overflow: ellipsis; /* نمایش نقطه‌سه تا نشان دادن متن بیشتر */
+            white-space: nowrap; /* جلوگیری از شکست خط */
+        }
+
+    </style>
+</head>
+<body>
+<nav>
+    {% if user.is_authenticated %}
+    <a href="{% url 'dashboard' %}">Your dashboard</a>
+    {% else %}
+    <a href="{% url 'login' %}">Login</a>
+    <a href="{% url 'signup' %}">Join us</a>
+    {% endif %}
+</nav>
+<div class="gallery">
+    {% for artwork in artworks %}
+    <div class="artwork">
+        <h3>{{ artwork.title }}</h3>
+        <p>{{ artwork.description }}</p>
+        <p>Price: {{ artwork.price }} Toman</p>
+        <p>Created by: {{ artwork.uploaded_by.username }}</p>
+        <img src="{{ artwork.image.url }}" alt="{{ artwork.title }}">
+        <a href="{% url 'delete_artwork' artwork_id=artwork.id %}">Delete Art</a>
+    </div>
+    {% endfor %}
+</div>
+<script>
+    document.addEventListener('contextmenu', event => event.preventDefault());
+</script>
+</body>
+</html>
+
+==================================================
+

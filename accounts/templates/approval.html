@@ -1,0 +1,105 @@
+<!-- templates/approval.html -->
+
+<!DOCTYPE html>
+<html lang="fa">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Image Manager</title>
+    <style>
+
+        body {
+            font-family: 'Tahoma', sans-serif;
+            background-color: #f4f4f4;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            min-height: 100vh;
+        }
+
+        h2 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 20px;
+        }
+
+        .artwork {
+            text-align: center;
+            background-color: #fff;
+            padding: 16px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+        }
+
+        .artwork h3 {
+            margin-bottom: 8px;
+            color: #007BFF;
+        }
+
+        .artwork p {
+            margin-bottom: 16px;
+            color: #555;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .artwork img {
+            max-width: 100%;
+            height: auto;
+            border-radius: 8px;
+            margin-top: 10px;
+        }
+
+        .approve-btn, .reject-btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-top: 10px;
+            transition: background-color 0.3s ease;
+        }
+
+        .approve-btn {
+            background-color: #4CAF50; 
+            color: white;
+        }
+
+        .approve-btn:hover {
+            background-color: #45a049;         }
+
+        .reject-btn {
+            background-color: #FF6347; 
+            color: white;
+        }
+
+        .reject-btn:hover {
+            background-color: #DC143C;         }
+
+    </style>
+</head>
+<body>
+<h2>Image verification</h2>
+{% for artwork in artworks_to_approve %}
+<div class="artwork">
+    <h3>{{ artwork.title }}</h3>
+    <p>{{ artwork.description }}</p>
+    <p>ارسال شده توسط: {{ artwork.uploaded_by.username }}</p>
+    <img src="{{ artwork.image.url }}" alt="{{ artwork.title }}">
+    <form method="post" action="{% url 'admin_approve_artwork' artwork_id=artwork.id %}">
+        {% csrf_token %}
+        <button type="submit" class="approve-btn">Confirm image</button>
+    </form>
+    <form method="post" action="{% url 'admin_reject_artwork' artwork_id=artwork.id %}">
+        {% csrf_token %}
+        <button type="submit" class="reject-btn">Cancel</button>
+    </form>
+</div>
+{% endfor %}
+</body>
+</html>

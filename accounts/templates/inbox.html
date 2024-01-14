@@ -1,0 +1,68 @@
+<!-- inbox.html -->
+<!DOCTYPE html>
+<html lang="fa">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Inbox</title>
+
+    <style>
+        body {
+            font-family: 'Tahoma', sans-serif;
+            background-color: #f4f4f4;
+            margin: 0;
+            padding: 20px;
+            text-align: center;
+        }
+
+        h2 {
+            color: #333;
+            font-size: 24px;
+        }
+
+        ul {
+            list-style-type: none;
+            padding: 0;
+        }
+
+        li {
+            background-color: #fff;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            margin: 10px 0;
+            padding: 15px;
+        }
+
+        li p {
+            margin: 0;
+        }
+
+        li span {
+            color: #777;
+            font-size: 12px;
+            display: block;
+            margin-top: 5px;
+        }
+
+        p {
+            color: #555;
+            font-size: 16px;
+        }
+    </style>
+</head>
+<body>
+    <h2>Your Inbox</h2>
+    {% if received_messages %}
+        <ul>
+            {% for message in received_messages %}
+                <li>
+                    <p>{{ message.content }}</p>
+                    <span>{{ message.created_at }}</span>
+                </li>
+            {% endfor %}
+        </ul>
+    {% else %}
+        <p>Your inbox is empty.</p>
+    {% endif %}
+</body>
+</html>

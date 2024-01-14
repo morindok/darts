@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="fa">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>User Manager</title>
+    <style>
+        body {
+            font-family: 'Tahoma', sans-serif;
+            background-color: #f4f4f4;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+        }
+
+        h2 {
+            text-align: center;
+            color: #333;
+        }
+
+        table {
+            border-collapse: collapse;
+            width: 80%;
+            margin: 20px auto;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            background-color: white;
+        }
+
+        th, td {
+            padding: 15px;
+            text-align: center;
+        }
+
+        th {
+            background-color: #4CAF50;
+            color: white;
+        }
+
+        td {
+            background-color: #f9f9f9;
+        }
+    </style>
+</head>
+<body>
+
+<table border="1">
+    <thead>
+    <tr>
+        <th>FirstName</th>
+        <th>LastName</th>
+        <th>Phone</th>
+        <th>Email</th>
+        <th>UserName</th>
+        <th>Telegram</th>
+        <th>NationalCode</th>
+        <th>Wallet Address(USDT)</th>
+        <th>Arts Counts</th>
+    </tr>
+    </thead>
+    <tbody>
+    {% for user in users %}
+        <tr>
+            <td>{{ user.userprofile.first_name }}</td>
+            <td>{{ user.userprofile.last_name }}</td>
+            <td>{{ user.userprofile.phone_number }}</td>
+            <td>{{ user.userprofile.email }}</td>
+            <td>{{ user.username }}</td>
+            <td>{{ user.userprofile.telegramID }}</td>
+            <td>{{ user.userprofile.national_code }}</td>
+            <td>{{ user.userprofile.digital_wallet_address }}</td>
+            <td>{{ user.artwork_set.count }}</td>
+
+
+        </tr>
+    {% endfor %}
+    </tbody>
+</table>
+
+</body>
+</html>

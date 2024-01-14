@@ -1,0 +1,1 @@
+from darts.wsgi import application

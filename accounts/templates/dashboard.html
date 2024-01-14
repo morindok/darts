@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="fa">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard</title>
+    <style>
+
+        body {
+            font-family: 'Tahoma', sans-serif;
+            background-color: black;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+
+
+        }
+
+        table {
+            border-collapse: collapse;
+            width: 100%;
+            margin-top: 300px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            background-color: black;
+        }
+
+        th, td {
+            padding: 15px;
+            text-align: center;
+        }
+
+        th {
+            background-color: black;
+            color: #ffffff;
+        }
+
+        td {
+            background-color: black;
+        }
+
+        a {
+            display: block;
+            text-decoration: none;
+            color: #ffffff;
+            background-color: #006b1b;
+            border-radius: 4px;
+            padding: 10px;
+            transition: background-color 0.3s ease;
+            font-size: 14px;
+        }
+
+        a:hover {
+            background-color: #45a049;
+        }
+
+        .user-info {
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            margin-top: 20px;
+            max-width: 400px;
+            margin: auto;
+        }
+
+        .user-info p {
+            margin-bottom: 16px;
+            color: #555;
+        }
+
+        .logout-btn {
+            display: flex;
+            justify-content: center;
+            margin-top: 20px;
+        }
+
+        .logout-btn button {
+            background-color: #d9534f;
+            color: white;
+            padding: 12px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background-color 0.3s ease;
+        }
+
+        .logout-btn button:hover {
+            background-color: #c9302c;
+        }
+
+        @media only screen and (max-width: 600px) {
+            /* Responsive styles for small screens */
+            table, th, td {
+                font-size: 12px;
+            }
+
+            .user-info {
+                max-width: 100%;
+            }
+
+            .logout-btn button {
+                padding: 10px 15px;
+            }
+        }
+
+        .new-message a {
+            background-color: #c9302c;
+
+        }
+
+        .new-message.read a {
+            background-color: #006b1b;
+
+        }
+    </style>
+</head>
+<body>
+
+
+<table>
+    <thead>
+    </thead>
+    <tr>
+        <th>
+            {% if user.is_authenticated %}
+                {% if not user.userprofile.is_complete %}
+                    <a href="{% url 'complete_profile' %}" style="color: #c9302c">Please Complete your profile</a>
+                {% endif %}
+            {% else %}
+                <p>You are not login</p>
+            {% endif %}
+        </th>
+    </tr>
+    <tr>
+        <th {% if has_unread_messages %}class="new-message"{% endif %}>
+            <a href="{% url 'inbox' %}" {% if messages_are_read %}class="read"{% endif %}>Inbox</a>
+        </th>
+    </tr>
+    <tr>
+        <th><a href="{% url 'add_artwork' %}">Add art to gallery</a></th>
+    </tr>
+    <tr>
+        <td><a href="{% url 'gallery' %}">Artists Gallery</a></td>
+    </tr>
+    <tr>
+        <td><a href="{% url 'user_gallery' user.id %}">Personal Gallery</a></td>
+    </tr>
+    <tr>
+        <td>
+            <a href="{% url 'find_your_artist' %}">Find Your Artist</a>
+        </td>
+    </tr>
+    <tr>
+        <td><a href="{% url 'favorites' %}">Your Favorites</a></td>
+    </tr>
+    <tr>
+        <td>
+            {% if user.is_staff %}
+                <a href="{% url 'manage_images' %}" class="manage-btn">Manage Images</a>
+            {% endif %}
+        </td>
+    </tr>
+    <tr>
+        <td>
+            {% if user.is_staff %}
+                <a href="{% url 'manage_users' %}" class="manage-btn">Manage Users</a>
+            {% endif %}
+        </td>
+    </tr>
+    <tr>
+        <td>
+            {% if user.is_staff %}
+                <a href="{% url 'statistics' %}">Site Stats</a>
+            {% endif %}
+        </td>
+    </tr>
+    <tr>
+        <td><a href="{% url 'donate_us' %}">Donate us</a></td>
+    </tr>
+    <tr>
+        <td><a href="{% url 'logout' %}">Logout</a></td>
+    </tr>
+
+</table>
+
+</body>
+</html>

@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="fa">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Donate your artist</title>
+    <style>
+        
+        body {
+            font-family: 'Tahoma', sans-serif;
+            background-color: #f4f4f4;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            min-height: 100vh;
+        }
+
+        .container {
+            text-align: center;
+        }
+
+        p {
+            font-size: 24px;
+            color: #333;
+            margin-bottom: 20px;
+        }
+
+        ul {
+            list-style-type: none;
+            padding: 0;
+        }
+
+        li {
+            font-size: 18px;
+            color: #555;
+            margin-bottom: 10px;
+        }
+
+        #back {
+            background-color: #4CAF50;
+            color: white;
+            padding: 15px 30px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 18px;
+            transition: background-color 0.3s ease;
+        }
+
+       
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <p>Donate your artist:</p>
+    <ul>
+        <li><strong>Art name:</strong> {{ artwork.title }}</li>
+        <li><strong>Art description:</strong> {{ artwork.description }}</li>
+        <li><strong>Price:</strong> {{ artwork.price }} USDT</li>
+        <li><strong>Artist name:</strong> <a href="{% url 'user_gallery' username=artwork.uploaded_by.username %}">
+            {{ artwork.uploaded_by.username }}
+        </a>
+</li>
+         <li><strong>Telegram ID of artist:</strong> <a href="https://t.me/{{ artwork.uploaded_by.userprofile.telegramID }}" target="_blank">{{ artwork.uploaded_by.userprofile.telegramID }}</a></li>
+        <li><strong>Artist wallet address(USDT):</strong> {{ artwork.uploaded_by.userprofile.digital_wallet_address }}</li>
+    </ul>   
+
+    <a id="back" type="button" href="{% url 'gallery' %}">Back to gallery</a>
+</div>
+
+</body>
+</html>
