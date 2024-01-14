@@ -17,22 +17,22 @@ To run the project, follow these steps:
    ```bash
    git clone https://github.com/morindok/darts.git
    
-3. **install virtual environment on terminal:**
+3. **Install virtual environment on terminal:**
 	```bash
 	cd darts
 	python -m venv venv
 	source venv/bin/activate
 
-4. **install django:**
+4. **Install django and pillow:**
 	```bash
 	pip install django
 	pip install pillow
 
-5. **make migrations:**
+5. **Make migrations:**
 	```bash
 	python manage.py makemigrations
 	python manage.py migrate
 
-6. **run project on local:**
+6. **Run project on local:**
 	```bash
 	ptyhon manage.py runserver
